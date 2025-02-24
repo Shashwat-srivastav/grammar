@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Grammar Correction App</title>
+    <style>
+        /* Root variables for color scheme and design parameters */
+        :root {
+            --primary-color: #4a90e2;
+            /* Accent color for interactive elements */
+            --background: #ecf0f3;
+            /* Main card/background color */
+            --body-bg: #f0f3f5;
+            /* Overall page background */
+            --shadow-dark: rgba(163, 177, 198, 0.6);
+            --shadow-light: rgba(255, 255, 255, 0.8);
+            --text-color: #333;
+        }
+
+        /* Global styles */
+        body {
+            background: var(--body-bg);
+            font-family: 'Roboto', sans-serif;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            color: var(--text-color);
+        }
+
+        /* Container with neomorphic design */
+        #container {
+            background: var(--background);
+            border-radius: 20px;
+            box-shadow: 13px 13px 20px var(--shadow-dark),
+                -13px -13px 20px var(--shadow-light);
+            padding: 30px;
+            width: 90%;
+            max-width: 600px;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 20px;
+            color: var(--primary-color);
+        }
+
+        button {
+            background: var(--background);
+            border: none;
+            outline: none;
+            border-radius: 10px;
+            box-shadow: 6px 6px 12px var(--shadow-dark),
+                -6px -6px 12px var(--shadow-light);
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 5px;
+            transition: all 0.2s ease;
+            color: var(--text-color);
+        }
+
+        button:hover {
+            color: var(--primary-color);
+        }
+
+        button:active {
+            box-shadow: inset 6px 6px 12px var(--shadow-dark),
+                inset -6px -6px 12px var(--shadow-light);
+        }
+
+        .section {
+            margin-top: 20px;
+        }
+
+        label {
+            font-weight: bold;
+            display: block;
+            margin-bottom: 5px;
+            color: var(--text-color);
+        }
+
+        textarea {
+            background: var(--background);
+            border: none;
+            border-radius: 10px;
+            box-shadow: inset 6px 6px 12px var(--shadow-dark),
+                inset -6px -6px 12px var(--shadow-light);
+            width: 100%;
+            padding: 10px;
+            font-size: 16px;
+            resize: none;
+            margin-top: 5px;
+            color: var(--text-color);
+            transition: border 0.2s ease;
+        }
+
+        textarea:focus {
+            outline: none;
+            border: 2px solid var(--primary-color);
+        }
+    </style>
+</head>
+
+<body>
+    <div id="container">
+        <h1>Grammar Correction App</h1>
+        <div style="text-align: center;">
+            <button id="start-btn">Start Recording</button>
+            <button id="stop-btn" disabled>Stop Recording</button>
+        </div>
+
+        <div class="section" id="transcript-section">
+            <label for="original-text">Original Transcript:</label>
+            <textarea id="original-text" readonly rows="5">Waiting for input...</textarea>
+        </div>
+
+        <div class="section" id="corrected-section">
+            <label for="corrected-text">Corrected Text:</label>
+            <textarea id="corrected-text" readonly rows="5">Awaiting correction...</textarea>
+        </div>
+    </div>
+
+    <script>
+        // Check for browser support for the SpeechRecognition API
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            alert("Your browser does not support Speech Recognition. Please use Chrome or another supported browser.");
+        }
+
+        // Initialize SpeechRecognition with interim results enabled
+        const recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+
+        let finalTranscript = "";
+        const startBtn = document.getElementById("start-btn");
+        const stopBtn = document.getElementById("stop-btn");
+        const originalTextElem = document.getElementById("original-text");
+        const correctedTextElem = document.getElementById("corrected-text");
+
+        // Log when speech recognition starts
+        recognition.onstart = () => {
+            console.log("Speech recognition started. Please speak into the microphone.");
+        };
+
+        // Start recording when the user clicks "Start Recording"
+        startBtn.addEventListener("click", () => {
+            finalTranscript = "";
+            originalTextElem.value = "";
+            correctedTextElem.value = "Awaiting correction...";
+            recognition.start();
+            startBtn.disabled = true;
+            stopBtn.disabled = false;
+        });
+
+        // Stop recording when the user clicks "Stop Recording"
+        stopBtn.addEventListener("click", () => {
+            recognition.stop();
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+        });
+
+        // Process results including interim transcript to update the display live
+        recognition.onresult = (event) => {
+            let interimTranscript = "";
+            for (let i = event.resultIndex; i < event.results.length; i++) {
+                if (event.results[i].isFinal) {
+                    finalTranscript += event.results[i][0].transcript;
+                } else {
+                    interimTranscript += event.results[i][0].transcript;
+                }
+            }
+            originalTextElem.value = finalTranscript + interimTranscript;
+            console.log("Current transcript:", originalTextElem.value);
+        };
+
+        recognition.onerror = (event) => {
+            console.error("Speech recognition error:", event.error);
+        };
+
+        // After speech recognition ends, send the transcript for grammar correction
+        recognition.onend = () => {
+            console.log("Speech recognition ended.");
+            if (finalTranscript.trim().length > 0) {
+                correctGrammar(finalTranscript);
+            }
+        };
+
+        // Function to send the transcript to the Flask backend for grammar correction
+        async function correctGrammar(text) {
+            try {
+                const response = await fetch("/correct", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({ text: text })
+                });
+                if (!response.ok) {
+                    throw new Error("API request failed: " + response.statusText);
+                }
+                const data = await response.json();
+                const correctedText = data.corrected_text;
+                correctedTextElem.value = correctedText;
+                speakText(correctedText);
+            } catch (error) {
+                console.error("Error correcting grammar:", error);
+                correctedTextElem.value = "Error: " + error.message;
+            }
+        }
+
+        // Function to pronounce text using the Speech Synthesis API
+        function speakText(text) {
+            const utterance = new SpeechSynthesisUtterance(text);
+            window.speechSynthesis.speak(utterance);
+        }
+    </script>
+</body>
+
+</html>
